@@ -1,35 +1,39 @@
-#include <bits/stdc++.h>
+#include <iostream>
+#include <string>
+#include <vector>
 
-using namespace std;
-
-vector<int> prefix_function(string s) {
-    int n = (int) s.length();
-    vector<int> pi(n);
-    for (int i = 1; i < n; ++i) {
+std::vector<int> ComputePrefixFunction(const std::string &text) {
+    std::vector<int> pi(text.size());
+    for (size_t i = 1; i < text.size(); ++i) {
         int j = pi[i - 1];
-        while (j > 0 && s[i] != s[j])
+        while (j > 0 && text[i] != text[j])
             j = pi[j - 1];
-        if (s[i] == s[j]) ++j;
+        if (text[i] == text[j]) ++j;
         pi[i] = j;
     }
     return pi;
 }
 
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-    cout.tie(nullptr);
-#ifndef ONLINE_JUDGE
-    freopen("input.txt", "r", stdin);
-    // freopen("output.txt", "w", stdout);
-#endif
-    string t, s;
-    cin >> s >> t;
-    auto pi = prefix_function(s + "#" + t);
-    int n = s.size();
-    for (int i = n + 1; i < pi.size(); ++i) {
-        if (pi[i] == n) {
-            cout << i - 2 * n << ' ';
+void solve(std::istream &in, std::ostream &out) {
+    std::string text, pattern;
+    in >> pattern >> text;
+    auto pi = ComputePrefixFunction(pattern);
+    int prev = 0;
+    for (size_t i = 0; i < text.size(); ++i) {
+        int j = prev;
+        while (j > 0 && text[i] != pattern[j])
+            j = pi[j - 1];
+        if (text[i] == pattern[j]) ++j;
+        prev = j;
+        if (prev == (int) pattern.size()) {
+            out << i + 1 - pattern.size() << ' ';
         }
     }
+}
+
+int main() {
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
+    solve(std::cin, std::cout);
 }
