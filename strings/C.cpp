@@ -1,26 +1,21 @@
+#include <algorithm>
 #include <iostream>
+#include <memory>
 #include <numeric>
 #include <string>
-#include <vector>
-#include <algorithm>
-#include <memory>
 #include <unordered_map>
-
-//#include "profile.h"
-
-using namespace std;
+#include <vector>
 
 struct Word {
-    string s;
-    size_t pos;
+    std::string s;
+    uint32_t pos;
 };
 
-
-vector<Word> ParseMask(const string &mask) {
-    vector<Word> result;
-    for (size_t ind = 0; ind < mask.size();) {
+std::vector<Word> ParseMask(const std::string& mask) {
+    std::vector<Word> result;
+    for (uint32_t ind = 0; ind < mask.size();) {
         size_t next = mask.find('?', ind);
-        if (next == string::npos) {
+        if (next == std::string::npos) {
             next = mask.size();
         }
         if (next > ind) {
@@ -32,14 +27,13 @@ vector<Word> ParseMask(const string &mask) {
 }
 
 class AhoCorasick {
-private:
+   private:
     struct Vertex;
-    using VertexPtr = shared_ptr<Vertex>;
+    using VertexPtr = std::shared_ptr<Vertex>;
 
     struct Vertex {
-
-        unordered_map<char, VertexPtr> to, go;
-        vector<size_t> inds;
+        std::unordered_map<char, VertexPtr> to, go;
+        std::vector<uint32_t> inds;
         VertexPtr link, parent;
         char parent_char;
         bool is_terminal = false;
@@ -50,38 +44,29 @@ private:
         }
     };
 
-    shared_ptr<Vertex> root = make_shared<Vertex>(-1);
+    std::shared_ptr<Vertex> _root = std::make_shared<Vertex>(-1);
 
-    vector<VertexPtr> out(VertexPtr v);
+    std::vector<VertexPtr> GetTerminalNodes(VertexPtr v);
+    VertexPtr go(const VertexPtr& from, char edge);
+    VertexPtr link(const VertexPtr& from);
 
-public:
-    void addPattern(const string &p, size_t ind);
+   public:
+    struct OccurrenceInfo {
+        uint32_t pos;
+        std::vector<uint32_t> words_ids;
 
-    VertexPtr go(const VertexPtr &from, char edge);
+        explicit OccurrenceInfo(uint32_t pos) : pos(pos) {}
+    };
 
-    VertexPtr link(const VertexPtr &from);
-
-    void processText(const string &text, vector<int> &cnt, const vector<Word> &words) {
-        auto current = root;
-        for (size_t i = 0; i < text.size(); ++i) {
-            current = go(current, text[i]);
-            auto terminal = out(current);
-            for (const auto &v : terminal) {
-                for (size_t ind : v->inds) {
-                    if (i + 1 >= words[ind].pos + words[ind].s.size()) {
-                        cnt[i + 1 - words[ind].pos - words[ind].s.size()]++;
-                    }
-                }
-            }
-        }
-    }
+    void AddPattern(const std::string& p, uint32_t ind);
+    std::vector<OccurrenceInfo> GetAllOccurrences(const std::string& text);
 };
 
-void AhoCorasick::addPattern(const string &p, size_t ind) {
-    shared_ptr current = root;
+void AhoCorasick::AddPattern(const std::string& p, uint32_t ind) {
+    auto current = _root;
     for (char c : p) {
         if (!current->to.count(c)) {
-            current->to[c] = make_shared<Vertex>(c, current);
+            current->to[c] = std::make_shared<Vertex>(c, current);
         }
         current = current->to.at(c);
     }
@@ -89,12 +74,13 @@ void AhoCorasick::addPattern(const string &p, size_t ind) {
     current->inds.push_back(ind);
 }
 
-AhoCorasick::VertexPtr AhoCorasick::go(const AhoCorasick::VertexPtr &from, char edge) {
+AhoCorasick::VertexPtr AhoCorasick::go(const AhoCorasick::VertexPtr& from,
+                                       char edge) {
     if (!from->go.count(edge)) {
         if (from->to.count(edge)) {
             from->go[edge] = from->to.at(edge);
-        } else if (from == root) {
-            from->go[edge] = root;
+        } else if (from == _root) {
+            from->go[edge] = _root;
         } else {
             from->go[edge] = go(link(from), edge);
         }
@@ -102,10 +88,10 @@ AhoCorasick::VertexPtr AhoCorasick::go(const AhoCorasick::VertexPtr &from, char 
     return from->go.at(edge);
 }
 
-AhoCorasick::VertexPtr AhoCorasick::link(const AhoCorasick::VertexPtr &from) {
+AhoCorasick::VertexPtr AhoCorasick::link(const AhoCorasick::VertexPtr& from) {
     if (!from->link) {
-        if (from == root || from->parent == root) {
-            from->link = root;
+        if (from == _root || from->parent == _root) {
+            from->link = _root;
         } else {
             from->link = go(link(from->parent), from->parent_char);
         }
@@ -113,12 +99,30 @@ AhoCorasick::VertexPtr AhoCorasick::link(const AhoCorasick::VertexPtr &from) {
     return from->link;
 }
 
-vector<AhoCorasick::VertexPtr> AhoCorasick::out(AhoCorasick::VertexPtr v) {
-    vector<VertexPtr> res;
+std::vector<AhoCorasick::OccurrenceInfo> AhoCorasick::GetAllOccurrences(
+    const std::string& text) {
+    std::vector<AhoCorasick::OccurrenceInfo> occurrences;
+    auto current = _root;
+    for (uint32_t i = 0; i < text.size(); ++i) {
+        AhoCorasick::OccurrenceInfo info(i);
+        current = go(current, text[i]);
+        auto terminal = GetTerminalNodes(current);
+        for (const auto& v : terminal) {
+            info.words_ids.insert(info.words_ids.end(), v->inds.begin(),
+                                  v->inds.end());
+        }
+        occurrences.push_back(info);
+    }
+    return occurrences;
+}
+
+std::vector<AhoCorasick::VertexPtr> AhoCorasick::GetTerminalNodes(
+    AhoCorasick::VertexPtr v) {
+    std::vector<VertexPtr> res;
     if (!v->is_terminal) {
         v = link(v);
     }
-    while (v != root) {
+    while (v != _root) {
         if (v->is_terminal) {
             res.push_back(v);
         }
@@ -127,32 +131,36 @@ vector<AhoCorasick::VertexPtr> AhoCorasick::out(AhoCorasick::VertexPtr v) {
     return res;
 }
 
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-    cout.tie(nullptr);
-#ifndef ONLINE_JUDGE
-    freopen("input.txt", "r", stdin);
-    freopen("output.txt", "w", stdout);
-#endif
-    string mask;
-    string text;
-    cin >> mask >> text;
+void Solve(std::istream& in, std::ostream& out) {
+    std::string mask;
+    std::string text;
+    in >> mask >> text;
     auto words = ParseMask(mask);
     AhoCorasick trie;
-    for (size_t i = 0; i < words.size(); ++i) {
-        trie.addPattern(words[i].s, i);
+    for (uint32_t i = 0; i < words.size(); ++i) {
+        trie.AddPattern(words[i].s, i);
     }
 
-    vector<int> cnt(text.size());
-    {
-//        LOG_DURATION("processing");
-        trie.processText(text, cnt, words);
+    auto occurrences = trie.GetAllOccurrences(text);
+    std::vector<uint32_t> cnt(text.size());
+    for (const auto& info : occurrences) {
+        for (auto ind : info.words_ids) {
+            if (info.pos + 1 >= words[ind].pos + words[ind].s.size()) {
+                cnt[info.pos + 1 - words[ind].pos - words[ind].s.size()]++;
+            }
+        }
     }
     for (int i = 0; i + mask.size() <= cnt.size(); ++i) {
         if (cnt[i] == words.size()) {
-            cout << i << ' ';
+            out << i << ' ';
         }
     }
+}
+
+int main() {
+    std::ios_base::sync_with_stdio(false);
+    std::cin.tie(nullptr);
+    std::cout.tie(nullptr);
+    Solve(std::cin, std::cout);
     return 0;
 }
