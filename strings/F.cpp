@@ -1,89 +1,80 @@
-#include <iostream>
 #include <algorithm>
 #include <fstream>
-#include <string>
-#include <numeric>
-#include <vector>
+#include <iostream>
 #include <map>
+#include <numeric>
+#include <string>
+#include <vector>
 
-#ifdef LOCAL
-
-#include "test_runner.h"
-
-#endif
-
-std::vector<size_t> ComputeSuffixArrayBruteForce(std::string str) {
-    str.push_back(0);
-
-    size_t size = str.size();
-    std::vector<std::string> suffixes;
-    suffixes.reserve(size);
-    for (size_t ind = 0; ind < size; ++ind) {
-        suffixes.push_back(str.substr(ind));
-    }
-    std::sort(begin(suffixes), end(suffixes));
-    std::vector<size_t> result(size);
+void SortSuffixesByLength(std::vector<size_t>& suf,
+                          const std::vector<size_t>& cls,
+                          size_t length) {
+    size_t size = suf.size();
+    std::vector<size_t> tmp_suf(size);
+    std::vector<size_t> tmp_counter(size);
     for (size_t i = 0; i < size; ++i) {
-        result[i] = size - suffixes[i].size();
+        tmp_suf[i] = (suf[i] - length + size) % size;
     }
-    return {begin(result) + 1, end(result)};
+    for (size_t i = 0; i < size; ++i) {
+        tmp_counter[cls[tmp_suf[i]]]++;
+    }
+    for (size_t i = 1; i < size; ++i) {
+        tmp_counter[i] += tmp_counter[i - 1];
+    }
+    for (int i = static_cast<int>(size) - 1; i >= 0; --i) {
+        suf[--tmp_counter[cls[tmp_suf[i]]]] = tmp_suf[i];
+    }
+}
+
+void UpdateClassesByLength(const std::vector<size_t>& suf,
+                           std::vector<size_t>& cls,
+                           size_t length) {
+    size_t size = suf.size();
+    std::vector<size_t> tmp_classes(size);
+    tmp_classes[suf[0]] = 0;
+    size_t classes_count = 1;
+    for (size_t i = 1; i < size; ++i) {
+        size_t lhs = (suf[i] + length) % size;
+        size_t rhs = (suf[i - 1] + length) % size;
+        if (cls[suf[i]] != cls[suf[i - 1]] || cls[lhs] != cls[rhs]) {
+            ++classes_count;
+        }
+        tmp_classes[suf[i]] = classes_count - 1;
+    }
+    std::copy(begin(tmp_classes), end(tmp_classes), begin(cls));
 }
 
 std::vector<size_t> ComputeSuffixArray(std::string str) {
     str.push_back(0);
 
     size_t size = str.size();
-    size_t classes_count = 0;
-    size_t suf_ind = 0;
     std::vector<size_t> cls(size), suf(size);
 
     // sorting single chars
-    std::map<char, std::vector<size_t>> ind_by_char;
+    size_t classes_count = 0;
+    size_t suf_ind = 0;
+    std::vector<std::vector<size_t>> ind_by_char(256);
     for (size_t ind = 0; ind < size; ++ind) {
         ind_by_char[str[ind]].push_back(ind);
     }
-    for (const auto &[letter, indices]: ind_by_char) {
-        for (size_t ind : indices) {
+    for (size_t i = 0; i < ind_by_char.size(); ++i) {
+        for (size_t ind : ind_by_char[i]) {
             cls[ind] = classes_count;
             suf[suf_ind++] = ind;
         }
-        classes_count++;
+        classes_count += !ind_by_char[i].empty();
     }
 
-    std::vector<size_t> tmp_suf(size);
-    std::vector<size_t> tmp_counter(size);
-    std::vector<size_t> tmp_classes(size);
     for (size_t length = 1; length < size; length <<= 1lu) {
-        for (size_t i = 0; i < size; ++i) {
-            tmp_suf[i] = (suf[i] - length + size) % size;
-        }
-        std::fill(begin(tmp_counter), end(tmp_counter), 0ul);
-        for (size_t i = 0; i < size; ++i) {
-            tmp_counter[cls[tmp_suf[i]]]++;
-        }
-        for (size_t i = 1; i < classes_count; ++i) {
-            tmp_counter[i] += tmp_counter[i - 1];
-        }
-        for (int i = static_cast<int>(size) - 1; i >= 0; --i) {
-            suf[--tmp_counter[cls[tmp_suf[i]]]] = tmp_suf[i];
-        }
-        tmp_classes[suf[0]] = 0;
-        classes_count = 1;
-        for (size_t i = 1; i < size; ++i) {
-            size_t lhs = (suf[i] + length) % size;
-            size_t rhs = (suf[i - 1] + length) % size;
-            if (cls[suf[i]] != cls[suf[i - 1]] || cls[lhs] != cls[rhs]) {
-                ++classes_count;
-            }
-            tmp_classes[suf[i]] = classes_count - 1;
-        }
-        std::copy(begin(tmp_classes), end(tmp_classes), begin(cls));
+        SortSuffixesByLength(suf, cls, length);
+        UpdateClassesByLength(suf, cls, length);
     }
 
     return {begin(suf) + 1, end(suf)};
 }
 
-std::vector<size_t> ComputeLCP(const std::string &str, const std::vector<size_t> &suf_array) {
+std::vector<size_t> ComputeLCP(const std::string& str,
+                               const std::vector<size_t>& suf_array) {
     size_t size = suf_array.size();
     std::vector<size_t> reverse_suf(size);
     for (size_t i = 0; i < size; ++i) {
@@ -98,7 +89,8 @@ std::vector<size_t> ComputeLCP(const std::string &str, const std::vector<size_t>
             continue;
         }
         size_t start = suf_array[reverse_suf[i] + 1];
-        while (std::max(i, start) + cur_lcp < size && str[i + cur_lcp] == str[start + cur_lcp]) {
+        while (std::max(i, start) + cur_lcp < size &&
+               str[i + cur_lcp] == str[start + cur_lcp]) {
             cur_lcp++;
         }
         lcp[reverse_suf[i]] = cur_lcp;
@@ -110,31 +102,7 @@ std::vector<size_t> ComputeLCP(const std::string &str, const std::vector<size_t>
     return lcp;
 }
 
-void test_suffix_computation() {
-    ASSERT_EQUAL(ComputeSuffixArray(""), ComputeSuffixArrayBruteForce(""))
-    ASSERT_EQUAL(ComputeSuffixArray("a"), ComputeSuffixArrayBruteForce("a"))
-
-    srand(time(nullptr));
-    size_t const alphabet_size = 26;
-    std::vector<char> alphabet(alphabet_size);
-    for (size_t i = 0; i < alphabet_size; ++i) {
-        alphabet[i] = 'a' + i;
-    }
-
-    size_t const size = 1000;
-    std::string s;
-    for (size_t i = 0; i < size; ++i) {
-        s.push_back(alphabet[rand() % alphabet_size]);
-    }
-    ASSERT_EQUAL(ComputeSuffixArray(s), ComputeSuffixArrayBruteForce(s))
-}
-
-void run_tests() {
-    TestRunner tr;
-    RUN_TEST(tr, test_suffix_computation);
-}
-
-void solve(std::istream &in, std::ostream &os) {
+void solve(std::istream& in, std::ostream& os) {
     std::string s, t;
     in >> s >> t;
     uint64_t k;
@@ -149,7 +117,7 @@ void solve(std::istream &in, std::ostream &os) {
     uint64_t counter = 0;
     std::string ans = "-1";
     for (size_t i = 0; i + 1 < size; ++i) {
-        auto[left, right] = std::minmax(suf_arr[i], suf_arr[i + 1]);
+        auto [left, right] = std::minmax(suf_arr[i], suf_arr[i + 1]);
         bool isDiffParts = (left <= s.size() && right > s.size());
         if (!isDiffParts) {
             common_length = std::min(common_length, lcp[i]);
@@ -169,7 +137,6 @@ void solve(std::istream &in, std::ostream &os) {
 int main() {
 #ifdef LOCAL
     std::ifstream fin("input.txt");
-    run_tests();
     solve(fin, std::cout);
 #else
     // ~~~~~~~~~~~~~~~ fast io ~~~~~~~~~~~~~~~~~~
@@ -177,7 +144,6 @@ int main() {
     std::cin.tie(nullptr);
     std::cout.tie(nullptr);
     // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     solve(std::cin, std::cout);
 #endif
     return 0;
