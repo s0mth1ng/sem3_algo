@@ -8,15 +8,24 @@
 #include <vector>
 
 class Vector {
-private:
-    std::array<double, 3> coords;
+  private:
+    const static size_t _DIMENSION = 3;
+    std::array<double, _DIMENSION> coords;
 
-public:
-    static Vector Zero;
+  public:
+    static const Vector Zero;
 
     Vector() : coords({}) {}
 
     Vector(double x, double y, double z) : coords({x, y, z}) {}
+
+    Vector(const std::initializer_list<double> &newCoords) {
+        if (newCoords.size() > _DIMENSION) {
+            throw std::invalid_argument("Dimension is too big.");
+        }
+        coords.fill(0);
+        std::copy(newCoords.begin(), newCoords.end(), coords.begin());
+    }
 
     double length() const {
         double res = 0;
@@ -27,7 +36,7 @@ public:
     }
 
     bool operator==(const Vector &v) const {
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             if (coords[i] != v.coords[i]) {
                 return false;
             }
@@ -41,7 +50,7 @@ public:
 
     Vector operator+(const Vector &v) const {
         Vector res;
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             res.coords[i] = coords[i] + v.coords[i];
         }
         return res;
@@ -49,7 +58,7 @@ public:
 
     Vector operator-(const Vector &v) const {
         Vector res;
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             res.coords[i] = coords[i] - v.coords[i];
         }
         return res;
@@ -57,7 +66,7 @@ public:
 
     double operator*(const Vector &v) const {
         double res = 0;
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             res += coords[i] * v.coords[i];
         }
         return res;
@@ -65,7 +74,7 @@ public:
 
     Vector operator*(double a) const {
         Vector res;
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             res.coords[i] = coords[i] * a;
         }
         return res;
@@ -73,16 +82,17 @@ public:
 
     Vector operator%(const Vector &v) const {
         Vector res;
-        for (size_t i = 0; i < 3; ++i) {
-            res.coords[i] = coords[(i + 1) % 3] * v.coords[(i + 2) % 3] -
-                            coords[(i + 2) % 3] * v.coords[(i + 1) % 3];
+        for (size_t i = 0; i < _DIMENSION; ++i) {
+            res.coords[i] =
+                coords[(i + 1) % _DIMENSION] * v.coords[(i + 2) % _DIMENSION] -
+                coords[(i + 2) % _DIMENSION] * v.coords[(i + 1) % _DIMENSION];
         }
         return res;
     }
 
     friend std::ostream &operator<<(std::ostream &os, const Vector &v) {
         os << '{';
-        for (size_t i = 0; i < 3; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             if (i) {
                 os << ", ";
             }
@@ -93,68 +103,24 @@ public:
     }
 
     friend std::istream &operator>>(std::istream &is, Vector &v) {
-        for (size_t i = 0; i < 2; ++i) {
+        for (size_t i = 0; i < _DIMENSION; ++i) {
             is >> v.coords[i];
         }
         return is;
     }
+
+    void ScanAs2d(std::istream &is) {
+        is >> coords[0] >> coords[1];
+        coords[2] = 0;
+    }
 };
 
-Vector Vector::Zero{};
-
-std::vector<Vector> getConvexHull(std::vector<Vector> &pts) {
-    std::sort(pts.begin(), pts.end());
-    pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
-
-    size_t ind = 0;
-    for (size_t i = 1; i < pts.size(); ++i) {
-        if ((pts[ind][1] == pts[i][1] && pts[ind][0] > pts[i][0]) ||
-            (pts[ind][1] < pts[i][1])) {
-            ind = i;
-        }
-    }
-
-    std::swap(pts[ind], pts.back());
-    std::vector<Vector> hull;
-    hull.push_back(pts.back());
-    pts.pop_back();
-
-    const auto &p0 = hull.back();
-    std::sort(begin(pts), end(pts), [p0](const auto &lhs, const auto &rhs) {
-        auto a = lhs - p0;
-        auto b = rhs - p0;
-        auto c = a % b;
-        if (c[2] == 0) {
-            return a.length() > b.length();
-        }
-        return c[2] < 0;
-    });
-
-    hull.push_back(pts[0]);
-    for (size_t i = 1; i < pts.size(); ++i) {
-        const auto &p3 = pts[i];
-        while (hull.size() >= 2) {
-            const auto &p1 = hull[hull.size() - 2];
-            const auto &p2 = hull.back();
-            auto F = p2 - p1;
-            auto S = p3 - p2;
-            if ((F % S)[2] > 0) {
-                hull.pop_back();
-            } else {
-                break;
-            }
-        }
-        hull.push_back(p3);
-    }
-
-    return hull;
-}
+const Vector Vector::Zero{};
 
 void SortByAngle(std::vector<Vector> &pts) {
     if (pts.empty()) {
         return;
     }
-
     auto it = std::min_element(begin(pts), end(pts),
                                [](const auto &lhs, const auto &rhs) {
                                    return std::make_pair(lhs[1], -lhs[0]) <
@@ -173,7 +139,36 @@ void SortByAngle(std::vector<Vector> &pts) {
     });
 }
 
-std::vector<Vector> ComputeMinkowskiSum(std::vector<Vector> &P, std::vector<Vector> &Q) {
+std::vector<Vector> getConvexHull(std::vector<Vector> &pts) {
+    if (pts.size() < 3) {
+        throw std::invalid_argument("Number of points is less than 3");
+    }
+    std::sort(pts.begin(), pts.end());
+    pts.erase(std::unique(pts.begin(), pts.end()), pts.end());
+    SortByAngle(pts);
+    std::vector<Vector> hull = {pts[0], pts[1]};
+    for (size_t i = 2; i < pts.size(); ++i) {
+        const auto &p3 = pts[i];
+        while (hull.size() >= 2) {
+            const auto &p1 = hull[hull.size() - 2];
+            const auto &p2 = hull.back();
+            auto F = p2 - p1;
+            auto S = p3 - p2;
+            if ((F % S)[2] < 0) {
+                hull.pop_back();
+            } else {
+                break;
+            }
+        }
+        hull.push_back(p3);
+    }
+    return hull;
+}
+
+std::vector<Vector> ComputeMinkowskiSum(const std::vector<Vector> &poly1,
+                                        const std::vector<Vector> &poly2) {
+    auto P = poly1;
+    auto Q = poly2;
     SortByAngle(P);
     SortByAngle(Q);
 
@@ -198,40 +193,42 @@ std::vector<Vector> ComputeMinkowskiSum(std::vector<Vector> &P, std::vector<Vect
     return sum;
 }
 
-void solve(std::istream &in, std::ostream &out) {
-    size_t n, m;
-    in >> n;
-    std::vector<Vector> P, Q;
-    P.reserve(n);
-    for (size_t i = 0; i < n; ++i) {
-        Vector t;
-        in >> t;
-        P.push_back(t);
-    }
-    in >> m;
-    Q.reserve(m);
-    for (size_t i = 0; i < m; ++i) {
-        Vector t;
-        in >> t;
-        Q.push_back(t * (-1));
-    }
-    auto sum = ComputeMinkowskiSum(P, Q);
-
+bool ArePolygonsIntersect(const std::vector<Vector> &poly1,
+                          const std::vector<Vector> &poly2) {
+    auto sum = ComputeMinkowskiSum(poly1, poly2);
     bool intersect = true;
     for (size_t i = 0; i < sum.size(); ++i) {
-        size_t ne = (i + 1) % sum.size();
-        if (sum[i] == Vector::Zero || sum[ne] == Vector::Zero) {
+        size_t nextInd = (i + 1) % sum.size();
+        if (sum[i] == Vector::Zero || sum[nextInd] == Vector::Zero) {
             intersect = true;
             break;
         }
-        auto prod = sum[i] % sum[ne];
+        auto prod = sum[i] % sum[nextInd];
         if (prod[2] < 0) {
             intersect = false;
             break;
         }
     }
+    return intersect;
+}
 
-    out << (intersect ? "YES\n" : "NO\n");
+std::vector<Vector> Scan2dPolygon(std::istream &in) {
+    size_t n;
+    in >> n;
+    std::vector<Vector> poly(n);
+    for (auto &p : poly) {
+        p.ScanAs2d(in);
+    }
+    return poly;
+}
+
+void solve(std::istream &in, std::ostream &out) {
+    auto poly1 = Scan2dPolygon(in);
+    auto poly2 = Scan2dPolygon(in);
+    for (auto &p : poly2) {
+        p = p * (-1);
+    }
+    out << (ArePolygonsIntersect(poly1, poly2) ? "YES\n" : "NO\n");
 }
 
 int main() {
